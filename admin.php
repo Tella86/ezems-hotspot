@@ -21,7 +21,7 @@ class Config {
     
     // System settings
     const ADMIN_EMAIL = 'admin@ezems.co.ke';
-    const SYSTEM_NAME = 'Internet Service Management';
+    const SYSTEM_NAME = 'ezems-htspot';
 }
 
 // Database schema
