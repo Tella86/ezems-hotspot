@@ -39,14 +39,35 @@ if ($result_code == 0 && $transaction_id && $mpesa_receipt_number) {
 
     if ($user_id && $package_id) {
         $start_time = date('Y-m-d H:i:s');
-        $end_time = date('Y-m-d H:i:s', strtotime('+30 days')); // Assuming 30-day validity
+        $end_time = date('Y-m-d H:i:s', strtotime('+30 days')); // Set package validity
 
-        // Insert subscription
-        $stmt = $db->prepare("INSERT INTO subscriptions (user_id, package_id, start_time, end_time, status) VALUES (?, ?, ?, ?, ?)");
-        $status = 'active';
-        $stmt->bind_param("iisss", $user_id, $package_id, $start_time, $end_time, $status);
-        $stmt->execute();
-        $stmt->close();
+        // Check if user already has an active subscription and update it
+        $checkSub = $db->prepare("SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active'");
+        $checkSub->bind_param("i", $user_id);
+        $checkSub->execute();
+        $checkSub->store_result();
+
+        if ($checkSub->num_rows > 0) {
+            // Update existing subscription
+            $updateSub = $db->prepare("UPDATE subscriptions SET end_time = ?, status = 'active' WHERE user_id = ?");
+            $updateSub->bind_param("si", $end_time, $user_id);
+            $updateSub->execute();
+            $updateSub->close();
+        } else {
+            // Create new subscription
+            $stmt = $db->prepare("INSERT INTO subscriptions (user_id, package_id, start_time, end_time, status) VALUES (?, ?, ?, ?, ?)");
+            $status = 'active';
+            $stmt->bind_param("iisss", $user_id, $package_id, $start_time, $end_time, $status);
+            $stmt->execute();
+            $stmt->close();
+        }
+        $checkSub->close();
+
+        // Enable user in FreeRADIUS
+        $enableUser = $db->prepare("INSERT INTO radcheck (username, attribute, op, value) VALUES (?, 'Auth-Type', ':=', 'Accept') ON DUPLICATE KEY UPDATE value = 'Accept'");
+        $enableUser->bind_param("s", $user_id);
+        $enableUser->execute();
+        $enableUser->close();
     }
 
     echo json_encode(['success' => true, 'message' => 'Payment processed successfully']);
