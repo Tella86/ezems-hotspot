@@ -1,4 +1,7 @@
 <?php
+
+require 'africastalking/src/AfricasTalking.php';
+require 'africastalking/vendor/autoload.php';
 require_once 'config.php';
 
 // Connect to the database
@@ -21,12 +24,19 @@ if ($result->num_rows > 0) {
         $phone = $row['phone'];
         $email = $row['email'];
 
-        // Remove user from FreeRADIUS (radcheck & radusergroup)
-        $db->query("DELETE FROM radcheck WHERE username = '$username'");
-        $db->query("DELETE FROM radusergroup WHERE username = '$username'");
+        // Securely delete user from FreeRADIUS
+        $stmt1 = $db->prepare("DELETE FROM radcheck WHERE username = ?");
+        $stmt1->bind_param("s", $username);
+        $stmt1->execute();
+
+        $stmt2 = $db->prepare("DELETE FROM radusergroup WHERE username = ?");
+        $stmt2->bind_param("s", $username);
+        $stmt2->execute();
 
         // Update subscription status to expired
-        $db->query("UPDATE subscriptions SET status = 'expired' WHERE user_id = $user_id");
+        $stmt3 = $db->prepare("UPDATE subscriptions SET status = 'expired' WHERE user_id = ?");
+        $stmt3->bind_param("i", $user_id);
+        $stmt3->execute();
 
         // Send SMS & Email notifications
         $message = "Your internet package has expired. Please renew to continue using the service.";
@@ -39,32 +49,32 @@ if ($result->num_rows > 0) {
 $db->close();
 
 /**
- * Function to send SMS notification
+ * Function to send SMS using AfricasTalking API
  */
 function sendSMS($phone, $message) {
-    $api_url = "https://sms_provider.com/api/send"; // Replace with actual SMS API URL
-    $api_key = "YOUR_SMS_API_KEY"; // Replace with actual API key
+    $username = "ezems";  // Your AfricasTalking username
+    $apiKey = "39fafb4f99370b33f2ce8a89fb49de56c6db75d19219d49db45c0522931be77e"; // Your API Key
 
-    $postData = [
-        'api_key' => $api_key,
-        'to' => $phone,
-        'message' => $message
-    ];
+    $AT = new AfricasTalking($username, $apiKey);
+    $sms = $AT->sms();
 
-    $ch = curl_init($api_url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-    curl_exec($ch);
-    curl_close($ch);
+    try {
+        $response = $sms->send([
+            'to'      => $phone,
+            'message' => $message
+        ]);
+        return $response;
+    } catch (Exception $e) {
+        return "Error: " . $e->getMessage();
+    }
 }
 
 /**
  * Function to send Email notification
  */
 function sendEmail($email, $message) {
-    $headers = "From: no-reply@yourisp.com\r\n";
-    $headers .= "Reply-To: support@yourisp.com\r\n";
+    $headers = "From: no-reply@ezems.co.ke\r\n";
+    $headers .= "Reply-To: support@ezems.co.ke\r\n";
     $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
 
     $subject = "Subscription Expired - Renew Now!";
